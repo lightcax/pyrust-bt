@@ -79,3 +79,4 @@ examples/data/round_trips.csv
 examples/results/*
 
 doc/*md
+*.db

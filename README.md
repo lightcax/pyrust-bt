@@ -39,7 +39,13 @@ Prereqs: Python 3.8+, Rust (`rustup`), maturin
 ```powershell
 pip install maturin
 cd rust/engine_rust
+
+# Option A: Install directly into the active Python environment (best for local dev)
 maturin develop --release
+
+# Option B: Build wheel only, install manually afterwards
+python -m maturin build --release
+pip install --force-reinstall (Get-ChildItem target/wheels/engine_rust-*.whl | Select-Object -First 1).FullName
 ```
 
 ## Quick Start
@@ -47,6 +53,19 @@ maturin develop --release
   ```powershell
   cd ../..
   python examples/run_mvp.py
+  ```
+- Local DuckDB data flow
+  ```powershell
+  # build the Rust extension once
+  cd rust/engine_rust
+  maturin develop --release
+
+  # import CSV candles into the bundled DuckDB (writes to data/backtest.db by default)
+  cd ../..
+  python examples/import_csv_to_db.py --csv examples/data/sh600000_min.csv --symbol 600000.sh --period 1m
+
+  # run the DB-backed example (reads from data/backtest.db)
+  python examples/run_mvp_db.py
   ```
 - Analyzer demo
   ```powershell

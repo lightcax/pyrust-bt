@@ -4,6 +4,10 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Database module for high-performance K-line operations
+mod database;
+pub use database::{get_market_data, resample_klines, save_klines, save_klines_from_csv};
+
 // 预提取的bar数据结构
 #[derive(Clone, Debug)]
 struct BarData {
@@ -962,5 +966,10 @@ fn engine_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_sma, m)?)?;
     m.add_function(wrap_pyfunction!(compute_rsi, m)?)?;
     m.add_function(wrap_pyfunction!(factor_backtest_fast, m)?)?;
+    // Database functions
+    m.add_function(wrap_pyfunction!(database::get_market_data, m)?)?;
+    m.add_function(wrap_pyfunction!(database::resample_klines, m)?)?;
+    m.add_function(wrap_pyfunction!(database::save_klines, m)?)?;
+    m.add_function(wrap_pyfunction!(database::save_klines_from_csv, m)?)?;
     Ok(())
 } 

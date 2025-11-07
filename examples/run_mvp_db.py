@@ -9,7 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from pyrust_bt.api import BacktestEngine, BacktestConfig
 from pyrust_bt.strategy import Strategy
-from pyrust_bt.data import load_csv_to_bars
+from engine_rust import get_market_data as get_market_data_rust 
+
 
 
 class DummySMAStrategy(Strategy):
@@ -28,7 +29,7 @@ class DummySMAStrategy(Strategy):
             # Market buy order
             return {"action": "BUY", "type": "market", "size": self.size}
         elif close < sma:
-            # Limit sell order (using current price as limit, will execute immediately in this example)
+            # Limit sell order (using current price as limit)
             return {"action": "SELL", "type": "limit", "size": self.size, "price": close}
         return None
 
@@ -39,6 +40,7 @@ class DummySMAStrategy(Strategy):
     def on_trade(self, event: Dict[str, Any]) -> None:
         # print("on_trade:", event)
         pass
+
 
 def main() -> None:
     # Prepare config with commission and slippage
@@ -51,13 +53,25 @@ def main() -> None:
     )
     engine = BacktestEngine(cfg)
 
-    # Prepare data (expects a CSV at examples/data/sample.csv)
-    data_path = os.path.join(os.path.dirname(__file__), "data", "sh600000_min.csv")
-    if not os.path.exists(data_path):
-        print(f"Sample data not found: {data_path}\nPlease place a CSV with columns: datetime,open,high,low,close,volume")
+    # Load data from DuckDB via Rust get_market_data
+    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "backtest.db")
+    symbol = "600000.sh"
+    period = "1m"
+
+    if get_market_data_rust is None:
+        print(
+            "Rust extension not available. Build it first under rust/engine_rust (e.g., 'maturin develop')."
+        )
         sys.exit(1)
 
-    bars = load_csv_to_bars(data_path, symbol="SAMPLE")
+    if not os.path.exists(db_path):
+        print(
+            f"Database not found: {db_path}. Import data first (see examples/import_csv_to_db.py)."
+        )
+        sys.exit(1)
+
+    # engine_rust.get_market_data(db_path, symbol, period, start=None, end=None, count=-1)
+    bars = get_market_data_rust(db_path, symbol, period, cfg.start, cfg.end, -1)
 
     # Run
     strategy = DummySMAStrategy(window=5, size=1.0)
@@ -65,7 +79,7 @@ def main() -> None:
 
     # Format output for readability
     print("\n" + "=" * 60)
-    print("Backtest Results")
+    print("Backtest Results (DB)")
     print("=" * 60)
     
     # Account information
@@ -103,4 +117,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main() 
+    main()
+
+
