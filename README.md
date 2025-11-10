@@ -1,6 +1,6 @@
 # pyrust-bt
 
-<div  align="center">   
+<div  align="center">
 <img src="images/logo.jpeg" width = "200" height = "200" alt="" align=center />
 </div>
 
@@ -8,8 +8,8 @@ A hybrid backtesting framework: Python for strategy and data, Rust for the high-
 
 [中文文档 | Chinese README](README.zh-CN.md)
 
-
 ## Features
+
 - Rust Engine
   - Time advancement over bars/ticks
   - Order matching: market/limit (same-bar simplified execution)
@@ -34,6 +34,7 @@ A hybrid backtesting framework: Python for strategy and data, Rust for the high-
   - Streamlit: submit runs, list & visualize results (equity curve + stats)
 
 ## Install & Build
+
 Prereqs: Python 3.8+, Rust (`rustup`), maturin
 
 ```powershell
@@ -49,12 +50,16 @@ pip install --force-reinstall (Get-ChildItem target/wheels/engine_rust-*.whl | S
 ```
 
 ## Quick Start
+
 - Minimal backtest
+
   ```powershell
   cd ../..
   python examples/run_mvp.py
   ```
+
 - Local DuckDB data flow
+
   ```powershell
   # build the Rust extension once
   cd rust/engine_rust
@@ -67,38 +72,82 @@ pip install --force-reinstall (Get-ChildItem target/wheels/engine_rust-*.whl | S
   # run the DB-backed example (reads from data/backtest.db)
   python examples/run_mvp_db.py
   ```
+
 - Analyzer demo
+
   ```powershell
   python examples/run_analyzers.py
   ```
+
 - Grid search
+
   ```powershell
   python examples/run_grid_search.py
   ```
+
 - Cross-sectional factor backtesting
+
   ```powershell
   python examples/run_cs_momentum_sample.py
   ```
+
 - Quantile portfolio backtesting with trading simulation
+
   ```powershell
   python examples/run_cs_quantile_portfolios.py
   ```
+
 - Performance test & batch-size comparison
+
   ```powershell
   python examples/run_performance_test.py
   ```
 
 Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,volume`).
 
+## Market Data: DuckDB + QMT
+
+### DuckDB Local Store
+
+- The default database lives at `data/backtest.db`, but you can point scripts to any DuckDB file via `--db`.
+- Bulk-import historical data:
+
+  ```powershell
+  # Write CSV directly into DuckDB (requires the compiled engine_rust extension)
+  python examples/import_csv_to_db.py data/513500_d.csv --symbol 513500.SH --period 1d --db data/backtest.db
+  ```
+
+- Use `--no-direct-csv` to parse the CSV in Python first (useful for inspection) before saving through Rust.
+- Internally `save_klines` / `save_klines_from_csv` persist to the canonical schema; feel free to inspect the DB with `duckdb` CLI or any DuckDB-compatible tool.
+
+### Zero-Maintenance QMT / XtData Backfill
+
+- When the local DuckDB store misses date ranges, `MarketDataService` can call QMT Mini (xtdata) to download the gap and write it back, achieving a “DB first → auto backfill” workflow.
+- Preparation checklist:
+  1. Install the `XtQuant` Python package by copying it into your interpreter’s `site-packages`, e.g. `D:\ProgramData\miniconda3\Lib\site-packages` (adjust to your environment).
+  2. Verify `import XtQuant.XtData` works in Python.
+  3. Set the `XTDATA_DIR` environment variable to the MiniQmt `userdata_mini` directory (default in examples: `D:\国金证券QMT交易端\userdata_mini`).
+- Run the multi-asset equal-weight example to smoke-test the data pipeline:
+
+  ```powershell
+  python examples/run_multi_asset_rebalance_strategy.py
+  ```
+
+- See `doc/xtdata_market_data_plan.md` for architecture details and operational recommendations.
+
 ## In Code
+
 - Config & engine
+
   ```python
   from pyrust_bt.api import BacktestEngine, BacktestConfig
   cfg = BacktestConfig(start="2020-01-01", end="2020-12-31", cash=100000,
                        commission_rate=0.0005, slippage_bps=2.0, batch_size=1000)
   engine = BacktestEngine(cfg)
   ```
+
 - Strategy (minimal)
+
   ```python
   from pyrust_bt.strategy import Strategy
   class MyStrategy(Strategy):
@@ -107,7 +156,9 @@ Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,
               return {"action": "BUY", "type": "market", "size": 1.0}
           return None
   ```
+
 - Run
+
   ```python
   from pyrust_bt.data import load_csv_to_bars
   bars = load_csv_to_bars("examples/data/sample.csv", symbol="SAMPLE")
@@ -116,6 +167,7 @@ Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,
   ```
 
 ## Analysis & Reports
+
 - Drawdown segments: `compute_drawdown_segments(equity_curve)`
 - Round trips: `round_trips_from_trades(trades, bars)` / export CSV
 - Performance metrics: `compute_performance_metrics(equity_curve)` (Sharpe/Sortino/Calmar/VAR)
@@ -128,24 +180,30 @@ Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,
   - Export: detailed reports, factor rankings, correlation matrices
 
 ## API & Frontend
+
 - Start API (FastAPI)
+
   ```powershell
   pip install fastapi uvicorn pydantic requests streamlit
   python -m uvicorn python.server_main:app --reload
   ```
+
 - Start frontend (Streamlit)
+
   ```powershell
   set PYRUST_BT_API=http://127.0.0.1:8000
   streamlit run frontend/streamlit_app.py
   ```
 
 ## Performance Notes
+
 - Prefer larger `batch_size` (e.g., 1000–5000) to reduce Python round-trips
 - Prefer dict actions over strings
 - Use Rust vectorized indicators (`compute_sma/compute_rsi`) when possible
 - For large data, prefer Parquet/Arrow and partitioned reads (by symbol/time)
 
 ## Project Structure
+
 - `rust/engine_rust`: Rust engine (PyO3), indicators & stats
 - `python/pyrust_bt`: Python API/strategy/data/analyzers/optimizer
 - `python/pyrust_bt/multi_factor_analyzer.py`: Multi-factor evaluation system
@@ -156,6 +214,7 @@ Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,
 - `frontend`: Streamlit UI
 
 ## TODO / Roadmap
+
 - Engine/Matching
   - Partial fills, order book, stop/take-profit, OCO, conditional orders
   - Multi-asset/multi-timeframe alignment, calendar/timezone
@@ -178,18 +237,22 @@ Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,
   - CI (wheel build/artifacts), releases
 
 ## 🚀 Performance Highlights
+
 - Backtest speed: from 1,682 bars/s to **419,552 bars/s** (≈250×)
 - Dataset: 550k bars in ~1.3s
 - Memory: preallocated buffers to reduce reallocations
 - Batching: configurable `batch_size` to reduce GIL contention
 
 ## Community
+
 Pull requests are welcome!
 
 ![Join](images/yzbjs1.png)
 
 ## License
+
 MIT
 
 ## Disclaimer
-This tool is for research and education only and does not constitute investment advice. You are solely responsible for your trading decisions and associated risks. 
+
+This tool is for research and education only and does not constitute investment advice. You are solely responsible for your trading decisions and associated risks.

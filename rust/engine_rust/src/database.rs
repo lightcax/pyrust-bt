@@ -57,16 +57,27 @@ fn period_to_minutes(period: &str) -> Option<i64> {
     }
 }
 
-fn ensure_period_table(conn: &Connection, period: &str) -> PyResult<String> {
-    let valid_periods = ["1m", "5m", "1d"];
-    if !valid_periods.contains(&period) {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Invalid period '{}'. Must be one of {:?}",
-            period, valid_periods
-        )));
+fn sanitize_period_identifier(period: &str) -> PyResult<String> {
+    let mut sanitized = String::with_capacity(period.len());
+    for ch in period.chars() {
+        if ch.is_ascii_alphanumeric() {
+            sanitized.push(ch.to_ascii_lowercase());
+        } else {
+            sanitized.push('_');
+        }
     }
+    let sanitized = sanitized.trim_matches('_').to_string();
+    if sanitized.is_empty() {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Period must contain at least one alphanumeric character",
+        ));
+    }
+    Ok(sanitized)
+}
 
-    let table_name = format!("klines_{}", period);
+fn ensure_period_table(conn: &Connection, period: &str) -> PyResult<String> {
+    let sanitized_period = sanitize_period_identifier(period)?;
+    let table_name = format!("klines_{}", sanitized_period);
 
     conn.execute(
         &format!(
@@ -106,37 +117,6 @@ fn ensure_period_table(conn: &Connection, period: &str) -> PyResult<String> {
     })?;
 
     Ok(table_name)
-}
-
-// Determine base period for synthesis
-fn get_base_period(period: &str) -> &'static str {
-    let period_lower = period.to_lowercase();
-
-    if period_lower.ends_with('m') {
-        if let Ok(minutes) = period_lower[..period_lower.len() - 1].parse::<i64>() {
-            if minutes <= 5 {
-                return "1m";
-            } else if minutes <= 60 {
-                return "5m";
-            }
-        }
-        return "1d";
-    } else if period_lower.ends_with('h') {
-        if let Ok(hours) = period_lower[..period_lower.len() - 1].parse::<i64>() {
-            if hours <= 4 {
-                return "5m";
-            }
-        }
-        return "1d";
-    } else if period_lower.ends_with('d')
-        || period_lower.ends_with('w')
-        || period_lower.ends_with("mo")
-        || period_lower.ends_with('M')
-        || period_lower.ends_with('y')
-    {
-        return "1d";
-    }
-    "1m"
 }
 
 // Parse datetime string to NaiveDateTime
@@ -472,53 +452,7 @@ pub fn load_and_synthesize_klines_rust(
     end: Option<&str>,
     count: i64,
 ) -> PyResult<Vec<KlineBar>> {
-    // Check if target period is a base table
-    let base_periods = ["1m", "5m", "1d"];
-
-    if base_periods.contains(&target_period) {
-        // Load directly from base table
-        return load_klines_rust(db_path, symbol, target_period, start, end, count);
-    }
-
-    // Determine which base table to use for synthesis
-    let base_period = get_base_period(target_period);
-
-    // For count queries on synthesized periods, we need to load more base data
-    // then synthesize and take the last N bars
-    // Estimate: if count is 100 and we're synthesizing 1h from 1m, we need ~6000 base bars
-    let base_count = if count > 0 {
-        // Estimate base count: target_minutes / base_minutes * count * 1.2 (safety margin)
-        let target_minutes = period_to_minutes(target_period).unwrap_or(60);
-        let base_minutes = period_to_minutes(base_period).unwrap_or(1);
-        (count * target_minutes / base_minutes * 120 / 100).max(count * 2)
-    } else {
-        -1 // -1 means no limit
-    };
-
-    // Load base data
-    let base_bars = load_klines_rust(db_path, symbol, base_period, start, end, base_count)?;
-
-    if base_bars.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Resample to target period (all in Rust, no Python conversion)
-    let resampled = resample_klines_rust(base_bars, target_period)?;
-
-    // If count was specified, we already got the latest N base bars,
-    // so the resampled result should already be the latest N bars
-    // But we need to ensure we only return the requested number
-    if count > 0 {
-        let len = resampled.len();
-        if len > count as usize {
-            // Take the last N bars (most recent)
-            Ok(resampled.into_iter().skip(len - count as usize).collect())
-        } else {
-            Ok(resampled)
-        }
-    } else {
-        Ok(resampled)
-    }
+    load_klines_rust(db_path, symbol, target_period, start, end, count)
 }
 
 /// Python-exposed function: Fetch market data directly from DuckDB (high performance)

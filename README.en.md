@@ -57,6 +57,36 @@ maturin develop --release
 
 Sample data: `examples/data/sample.csv` (headers: `datetime,open,high,low,close,volume`).
 
+## Market Data: DuckDB + QMT
+
+### DuckDB Local Store
+
+- The default database lives at `data/backtest.db`, but you can point scripts to any DuckDB file via `--db`.
+- Bulk-import historical data:
+
+  ```powershell
+  # Write CSV directly into DuckDB (requires the compiled engine_rust extension)
+  python examples/import_csv_to_db.py data/513500_d.csv --symbol 513500.SH --period 1d --db data/backtest.db
+  ```
+
+- Use `--no-direct-csv` to parse the CSV in Python first (useful for inspection) before saving through Rust.
+- Internally `save_klines` / `save_klines_from_csv` persist to the canonical schema; feel free to inspect the DB with `duckdb` CLI or any DuckDB-compatible tool.
+
+### Zero-Maintenance QMT / XtData Backfill
+
+- When the local DuckDB store misses date ranges, `MarketDataService` can call QMT Mini (xtdata) to download the gap and write it back, achieving a “DB first → auto backfill” workflow.
+- Preparation checklist:
+  1. Install the `XtQuant` Python package by copying it into your interpreter’s `site-packages`, e.g. `D:\ProgramData\miniconda3\Lib\site-packages` (adjust to your environment).
+  2. Verify `import XtQuant.XtData` works in Python.
+  3. Set the `XTDATA_DIR` environment variable to the MiniQmt `userdata_mini` directory (default in examples: `D:\国金证券QMT交易端\userdata_mini`).
+- Run the multi-asset equal-weight example to smoke-test the data pipeline:
+
+  ```powershell
+  python examples/run_multi_asset_rebalance_strategy.py
+  ```
+
+- See `doc/xtdata_market_data_plan.md` for architecture details and operational recommendations.
+
 ## In Code
 - Config & engine
   ```python
